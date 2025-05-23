@@ -3,7 +3,7 @@ vec = require "vec"
 require "gen"
 
 function love.load(args)
-    love.graphics.setDefaultFilter("nearest")
+    love.graphics.setDefaultFilter("linear")
     local crosshair = love.mouse.newCursor("crosshair.png", 8, 8)
     love.mouse.setCursor(crosshair)
     
@@ -45,17 +45,35 @@ function love.load(args)
         }
     }
 
+    textures = {
+        glass = love.graphics.newImage("glass.png"),
+        grass = love.graphics.newImage("grass.png")
+    }
+    for _, t in pairs(textures) do t:setWrap("repeat") end
+    defaultTexture = textures.grass
+    outerTint = {0.5, 0.5, 0.5}
+    borderColor = {0.3, 0.6, 0.3}
+    backgroundColor = {0.6, 0.6, 1}
+
     -- wall types
     walls = {
         { -- white
-            color = {1, 1, 1},
+            color = {
+                fill = {1, 1, 1},
+                outline = {1, 1, 1}
+            },
+            texture = textures.glass,
             material = material.glass,
             split = {
                 --[light] => {refract, reflect}
             }
         },
         { -- red
-            color = {1, 0, 0},
+            color = {
+                fill = {1, 0, 0},
+                outline = {1, 0, 0}
+            },
+            texture = textures.glass,
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -73,7 +91,11 @@ function love.load(args)
             }
         },
         { -- green
-            color = {0, 1, 0},
+            color = {
+                fill = {0, 1, 0},
+                outline = {0, 1, 0}
+            },
+            texture = textures.glass,
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -91,7 +113,11 @@ function love.load(args)
             }
         },
         { -- blue
-            color = {0, 0, 1},
+            color = {
+                fill = {0, 0, 1},
+                outline = {0, 0, 1}
+            },
+            texture = textures.glass,
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -109,7 +135,11 @@ function love.load(args)
             }
         },
         { -- yellow
-            color = {1, 1, 0},
+            color = {
+                fill = {1, 1, 0},
+                outline = {1, 1, 0}
+            },
+            texture = textures.glass,
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -133,7 +163,11 @@ function love.load(args)
             }
         },
         { -- cyan
-            color = {0, 1, 1},
+            color = {
+                fill = {0, 1, 1},
+                outline = {0, 1, 1}
+            },
+            texture = textures.glass,
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -157,7 +191,11 @@ function love.load(args)
             }
         },
         { -- magenta
-            color = {1, 0, 1},
+            color = {
+                fill = {1, 0, 1},
+                outline = {1, 0, 1}
+            },
+            texture = textures.glass,
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -182,7 +220,8 @@ function love.load(args)
         }
     }
 
-    position = vec(0.5, 0,5)
+    position = vec.polar(love.math.random() * 2 * math.pi) * 11
+    radius = 0.25
     moveSpeed = 5
     direction = vec(0, 0)
     lightToggles = {true, true, true}
@@ -233,6 +272,13 @@ function love.load(args)
                 if insidePolygon(position, region.vertices) then
                     currentRegion = region
                 end
+                region.mesh = love.graphics.newMesh(#region.vertices)
+                for i, v in ipairs(region.vertices) do
+                    region.mesh:setVertexAttribute(i, 1, v:unpack())
+                    region.mesh:setVertexAttribute(i, 2, v:unpack())
+                    region.mesh:setVertexAttribute(i, 3, 1, 1, 1, 1)
+                end
+                region.mesh:setTexture(defaultTexture)
             end
         end
     end
@@ -252,6 +298,7 @@ function love.load(args)
 
     -- generate walls
     local wallZoneRadius = 10
+
     for pos, region in pairs(regions) do
         region.isOuter = vec.fromString(pos).sqrLen > wallZoneRadius^2 * 1.1
     end
@@ -303,6 +350,7 @@ function traceRay(region, origin, direction, light, range, power)
     direction = direction.norm
     power = power or 1
     local r = {
+        region = region,
         origin = origin,
         direction = direction,
         length = range,
@@ -317,19 +365,22 @@ function traceRay(region, origin, direction, light, range, power)
             light = nil
         end
     end
-    if not region or not light then
+    if not region then
         return r
     end
     for _, edge in ipairs(region.edges) do
         local p = intersect("vector ray", origin, direction, "segment", edge[1], edge[2])
-        local normal = (edge[2] - edge[1]):rotate(-math.pi/2)
+        local normal = (edge[2] - edge[1]).norm
+        normal = vec(normal.y, -normal.x)
         if p and direction:dot(normal) > 0 then
             local d = (p - origin).len
             if not range or d < range  then
                 r.length = d
                 local neighbor = region.neighbors[edge]
                 if (neighbor and neighbor.wall) == region.wall then
-                    return traceRay(neighbor, origin, direction, light, range, power)
+                    r = traceRay(neighbor, origin, direction, light, range, power)
+                    r.region = region
+                    return r
                 end
                 local n1 = region.wall and region.wall.material.density or 1
                 local n2 = neighbor and neighbor.wall and neighbor.wall.material.density or 1
@@ -360,20 +411,20 @@ function traceRay(region, origin, direction, light, range, power)
 end
 
 local infiniteRayLength = 100
-function drawRay(ray, width, from, to)
+function drawRay(ray, width, from, to, overrideColor)
     from, to = from or 0, to or infiniteRayLength
     for _, r in ipairs(ray.split) do
         local l = ray.length or (r.origin - ray.origin).len
         if to > l then
-            drawRay(r, width, from - l, to - l)
+            drawRay(r, width, from - l, to - l, overrideColor)
         end
     end
-    if ray.light then
-        local len = ray.length or infiniteRayLength
+    local len = ray.length or infiniteRayLength
+    if from < len and to > 0 and ray.light then
         from, to = math.max(math.min(from, len), 0), math.max(math.min(to, len), 0)
         local p1, p2 = ray.origin + ray.direction:setLen(from), ray.origin + ray.direction:setLen(to)
         love.graphics.push("all")
-        love.graphics.setColor(ray.light.color)
+        love.graphics.setColor(overrideColor or ray.light.color)
         love.graphics.circle("fill", p1.x, p1.y, width/2)
         love.graphics.circle("fill", p2.x, p2.y, width/2)
         love.graphics.setLineWidth(width)
@@ -390,22 +441,36 @@ function love.update(dt)
         (love.keyboard.isDown("s") and 1 or 0) - (love.keyboard.isDown("w") and 1 or 0)
     )
     local delta = move_inp:setLen(moveSpeed * dt)
-    for _, edge in ipairs(currentRegion and currentRegion.edges or borders) do
-        if intersect("vector segment", position, delta, "segment", edge[1], edge[2]) then
-            currentRegion = currentRegion and currentRegion.neighbors[edge] or borders[edge]
-            break
+    for _, edge in ipairs(currentRegion.edges) do
+        local neighbor = currentRegion.neighbors[edge]
+        if (not neighbor or neighbor.wall ~= currentRegion.wall) and intersectCircle("line", edge[1], edge[2], position + delta, radius) then
+            local e = (edge[2] - edge[1]).norm
+            local normal = vec(e.y, -e.x)
+            delta = delta:project(e) + (math.abs((position - edge[1]):det(e)) - radius) * normal
         end
     end
     position = position + delta
+    if not insidePolygon(position, currentRegion.vertices) then
+        for _, neighbor in pairs(currentRegion.neighbors) do
+            if insidePolygon(position, neighbor.vertices) then
+                currentRegion = neighbor
+                break
+            end
+        end
+    end
     direction = (vec(love.mouse.getPosition()) - vec(w/2, h/2)).norm
 
     currentRay = traceRay(currentRegion, position, direction, currentLight, boltRange)
 
+    local inc = boltSpeed * dt
     for i = #bolts, 1, -1 do
         local bolt = bolts[i]
-        bolt.distance = bolt.distance + boltSpeed * dt
-        if bolt.distance > boltRange + boltLength then
+        bolt.distance = bolt.distance + inc
+        if bolt.distance > bolt.ray.length + boltLength then
             table.remove(bolts, i)
+            for _, r in ipairs(bolt.ray.split) do
+                table.insert(bolts, {distance = bolt.distance - bolt.ray.length, ray = traceRay(r.region, r.origin, r.direction, r.light, boltRange, r.power)})
+            end
         end
     end
 end
@@ -418,21 +483,22 @@ function applyCameraTransform(x, y, z, r)
 end
 
 function love.draw()
-    applyCameraTransform(position.x, position.y, 90, 0)
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+    applyCameraTransform(position.x, position.y, w/2 / (boltRange + 1), 0)
     
-    love.graphics.setBackgroundColor(0, 0, 0)
+    love.graphics.setBackgroundColor(backgroundColor)
     
     love.graphics.setLineWidth(0.025)
     for _, r in pairs(regions) do
         if r.isOuter then
-            love.graphics.setColor(0.4, 0.4, 0.4)
+            love.graphics.setColor(outerTint)
         else
-            love.graphics.setColor(0.6, 0.6, 0.6)
+            love.graphics.setColor(1, 1, 1)
         end
-        love.graphics.polygon("fill", vec.convertArray(r.vertices))
+        --r.mesh:setTexture(defaultTexture)
+        love.graphics.draw(r.mesh)
     end
-    love.graphics.setColor(0.2, 0.2, 0.2)
+    love.graphics.setColor(borderColor)
     for _, edge in ipairs(borders) do
         local d = edge[2] - edge[1]
         d = vec(-d.norm.y, d.norm.x)
@@ -442,21 +508,25 @@ function love.draw()
         })
     end
     for d = 0, boltRange, 0.5 do
-        drawRay(currentRay, 0.01, d, d + 0.25)
+        drawRay(currentRay, 0.01, d + 0.25, d + 0.5)
     end
     for _, bolt in ipairs(bolts) do
-        drawRay(bolt.ray, 0.05, bolt.distance - boltLength, bolt.distance)
+        drawRay(bolt.ray, 0.09, bolt.distance - boltLength, bolt.distance)
+        drawRay(bolt.ray, 0.03, bolt.distance - boltLength, bolt.distance, {1, 1, 1})
     end
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.circle("fill", position.x, position.y, radius)
     love.graphics.setColor(0, 0, 0)
-    love.graphics.circle("fill", position.x, position.y, 0.25)
-    for _, reg in pairs(regions) do
-        if reg.wall then
-            local r, g, b = unpack(reg.wall.color)
-            love.graphics.setColor(r, g, b, 0.4)
-            love.graphics.polygon("fill", vec.convertArray(reg.vertices))
-            love.graphics.setColor(r, g, b)
-            for _, edge in ipairs(reg.edges) do
-                if not reg.neighbors[edge] or (reg.wall ~= reg.neighbors[edge].wall) then
+    love.graphics.circle("line", position.x, position.y, radius)
+    for _, r in pairs(regions) do
+        if r.wall then
+            love.graphics.setColor(r.wall.color.fill)
+            r.mesh:setTexture(r.wall.texture)
+            love.graphics.draw(r.mesh)
+            r.mesh:setTexture(defaultTexture)
+            love.graphics.setColor(r.wall.color.outline)
+            for _, edge in ipairs(r.edges) do
+                if not r.neighbors[edge] or (r.wall ~= r.neighbors[edge].wall) then
                     local d = edge[2] - edge[1]
                     d = vec(-d.norm.y, d.norm.x)
                     love.graphics.line(vec.convertArray{
@@ -470,7 +540,7 @@ function love.draw()
     
     love.graphics.origin()
     love.graphics.setColor(1, 1, 1)
-    love.graphics.print(("%d FPS"):format(love.timer.getFPS()))
+    love.graphics.print(("%d FPS\n%s"):format(love.timer.getFPS(), currentRegion.position.str))
 end
 
 function love.keypressed(key)

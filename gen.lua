@@ -162,6 +162,18 @@ function generateVoronoiCell(seed, x, y)
     return r
 end
 
+function nearestPoint(x, type, o, p)
+    local v = type:match("vector") and p or (p - o)
+    local d = x - o
+    local t = v:dot(d) / v.sqrLen
+    if type:match("segment") then
+        t = math.max(0, math.min(1, t))
+    elseif type:match("ray") then
+        t = math.max(0, t)
+    end
+    return o + t * v
+end
+
 function intersect(type1, o1, p1, type2, o2, p2)
     local v1, v2 = type1:match("vector") and p1 or (p1 - o1), type2:match("vector") and p2 or (p2 - o2)
     local v3 = o1 - o2
@@ -172,6 +184,16 @@ function intersect(type1, o1, p1, type2, o2, p2)
     local t2 = v1:det(v3) / d
     if (type2:match("segment") and (t2 < 0 or t2 > 1)) or (type2:match("ray") and t2 < 0) then return end
     return (o1 + t1 * v1 + o2 + t2 * v2) / 2
+end
+
+function intersectCircle(type, o, p, c, r)
+    local v = type:match("vector") and p or (p - o)
+    local d = c - o
+    local f = math.abs(v.norm:det(d))
+    if f > r then return end
+    local t = v:dot(d) / v.sqrLen - math.sqrt(r^2 - f^2) / v.len
+    if (type:match("segment") and (t < 0 or t > 1)) or (type:match("ray") and t < 0) then return end
+    return o + t * v
 end
 
 function insidePolygon(p, poly)

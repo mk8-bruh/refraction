@@ -95,7 +95,7 @@ lib = {
 	end,
 	project = function(a, b)
 		if lib.is(a) and lib.is(b) then
-			if a.len == 0 or b.len == 0 then return lib.zero() end
+			if a.len == 0 or b.len == 0 then return vec(0, 0) end
 			return lib.dot(a, b) / b.sqrLen * b
 		end
 	end,
