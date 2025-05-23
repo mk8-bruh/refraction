@@ -48,20 +48,14 @@ function love.load(args)
     -- wall types
     walls = {
         { -- white
-            color = {
-                fill = {1, 1, 1, 0.4},
-                outline = {1, 1, 1, 1}
-            },
+            color = {1, 1, 1},
             material = material.glass,
             split = {
                 --[light] => {refract, reflect}
             }
         },
         { -- red
-            color = {
-                fill = {1, 0, 0, 0.4},
-                outline = {1, 0, 0, 1}
-            },
+            color = {1, 0, 0},
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -79,10 +73,7 @@ function love.load(args)
             }
         },
         { -- green
-            color = {
-                fill = {0, 1, 0, 0.4},
-                outline = {0, 1, 0, 1}
-            },
+            color = {0, 1, 0},
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -100,10 +91,7 @@ function love.load(args)
             }
         },
         { -- blue
-            color = {
-                fill = {0, 0, 1, 0.4},
-                outline = {0, 0, 1, 1}
-            },
+            color = {0, 0, 1},
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -121,10 +109,7 @@ function love.load(args)
             }
         },
         { -- yellow
-            color = {
-                fill = {1, 1, 0, 0.4},
-                outline = {1, 1, 0, 1}
-            },
+            color = {1, 1, 0},
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -148,10 +133,7 @@ function love.load(args)
             }
         },
         { -- cyan
-            color = {
-                fill = {0, 1, 1, 0.4},
-                outline = {0, 1, 1, 1}
-            },
+            color = {0, 1, 1},
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -175,10 +157,7 @@ function love.load(args)
             }
         },
         { -- magenta
-            color = {
-                fill = {1, 0, 1, 0.4},
-                outline = {1, 0, 1, 1}
-            },
+            color = {1, 0, 1},
             material = material.tintedGlass,
             split = {
                 [light.white] = {
@@ -470,13 +449,14 @@ function love.draw()
     end
     love.graphics.setColor(0, 0, 0)
     love.graphics.circle("fill", position.x, position.y, 0.25)
-    for _, r in pairs(regions) do
-        if r.wall then
-            love.graphics.setColor(r.wall.color.fill)
-            love.graphics.polygon("fill", vec.convertArray(r.vertices))
-            love.graphics.setColor(r.wall.color.outline)
-            for _, edge in ipairs(r.edges) do
-                if not r.neighbors[edge] or (r.wall ~= r.neighbors[edge].wall) then
+    for _, reg in pairs(regions) do
+        if reg.wall then
+            local r, g, b = unpack(reg.wall.color)
+            love.graphics.setColor(r, g, b, 0.4)
+            love.graphics.polygon("fill", vec.convertArray(reg.vertices))
+            love.graphics.setColor(r, g, b)
+            for _, edge in ipairs(reg.edges) do
+                if not reg.neighbors[edge] or (reg.wall ~= reg.neighbors[edge].wall) then
                     local d = edge[2] - edge[1]
                     d = vec(-d.norm.y, d.norm.x)
                     love.graphics.line(vec.convertArray{
