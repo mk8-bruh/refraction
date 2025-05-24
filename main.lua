@@ -6,7 +6,7 @@ function love.load(args)
     love.graphics.setDefaultFilter("linear")
     local crosshair = love.mouse.newCursor("crosshair.png", 8, 8)
     love.mouse.setCursor(crosshair)
-    
+
     -- light types
     light = {
         white = {
@@ -49,9 +49,28 @@ function love.load(args)
         glass = love.graphics.newImage("glass.png"),
         grass = love.graphics.newImage("grass.png")
     }
-    for _, t in pairs(textures) do t:setWrap("repeat") end
-    defaultTexture = textures.grass
-    outerTint = {0.5, 0.5, 0.5}
+
+    mapSize = 12
+    outerThickness = 2
+    innerMapSize = mapSize - outerThickness
+
+    -- transform into tiled meshes
+    meshSize = 2 * mapSize + 10
+    for k, t in pairs(textures) do
+        t:setWrap("repeat")
+        local mesh = love.graphics.newMesh({
+            {-meshSize/2, -meshSize/2, -meshSize/2, -meshSize/2},
+            { meshSize/2, -meshSize/2,  meshSize/2, -meshSize/2},
+            { meshSize/2,  meshSize/2,  meshSize/2,  meshSize/2},
+            {-meshSize/2,  meshSize/2, -meshSize/2,  meshSize/2}
+        }, "fan")
+        mesh:setTexture(t)
+        textures[k] = mesh
+    end
+
+    -- global graphics setup
+    groundTexture = textures.grass
+    outerTint = {0.75, 0.75, 0.75}
     borderColor = {0.3, 0.6, 0.3}
     backgroundColor = {0.6, 0.6, 1}
 
@@ -219,6 +238,9 @@ function love.load(args)
             }
         }
     }
+    for i, wall in ipairs(walls) do
+        wall.index = i
+    end
 
     position = vec.polar(love.math.random() * 2 * math.pi) * 11
     radius = 0.25
@@ -262,23 +284,14 @@ function love.load(args)
     love.math.setRandomSeed(seed)
 
     -- generate polygons
-    local size = 12
-
-    for x = -size, size do
-        for y = -size, size do
-            if x^2 + y^2 <= size^2 * 1.1 then
+    for x = -mapSize, mapSize do
+        for y = -mapSize, mapSize do
+            if x^2 + y^2 <= mapSize^2 * 1.1 then
                 local region = generateVoronoiCell(seed, x, y)
                 regions[vec(x, y).str] = region
                 if insidePolygon(position, region.vertices) then
                     currentRegion = region
                 end
-                region.mesh = love.graphics.newMesh(#region.vertices)
-                for i, v in ipairs(region.vertices) do
-                    region.mesh:setVertexAttribute(i, 1, v:unpack())
-                    region.mesh:setVertexAttribute(i, 2, v:unpack())
-                    region.mesh:setVertexAttribute(i, 3, 1, 1, 1, 1)
-                end
-                region.mesh:setTexture(defaultTexture)
             end
         end
     end
@@ -297,10 +310,8 @@ function love.load(args)
     end
 
     -- generate walls
-    local wallZoneRadius = 10
-
     for pos, region in pairs(regions) do
-        region.isOuter = vec.fromString(pos).sqrLen > wallZoneRadius^2 * 1.1
+        region.isOuter = vec.fromString(pos).sqrLen > innerMapSize^2 * 1.1
     end
 
     -- weighted random neighbor
@@ -487,18 +498,24 @@ function love.draw()
     applyCameraTransform(position.x, position.y, w/2 / (boltRange + 1), 0)
     
     love.graphics.setBackgroundColor(backgroundColor)
-    
+
     love.graphics.setLineWidth(0.025)
+    -- set stencil values (1 for normal ground, 2 for outer layer, 2 + n for each wall type)
     for _, r in pairs(regions) do
-        if r.isOuter then
-            love.graphics.setColor(outerTint)
-        else
-            love.graphics.setColor(1, 1, 1)
-        end
-        --r.mesh:setTexture(defaultTexture)
-        love.graphics.draw(r.mesh)
+        love.graphics.stencil(function()
+            love.graphics.polygon("fill", vec.convertArray(r.vertices))
+        end, "replace", (r.wall and r.wall.index + 2) or (r.isOuter and 2) or 1, true)
     end
+    -- draw normal ground
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setStencilTest("greater", 0)
+    love.graphics.draw(groundTexture)
+    -- draw outer layer
     love.graphics.setColor(borderColor)
+    love.graphics.setStencilTest("equal", 2)
+    love.graphics.draw(groundTexture)
+    -- draw map edges
+    love.graphics.setStencilTest()
     for _, edge in ipairs(borders) do
         local d = edge[2] - edge[1]
         d = vec(-d.norm.y, d.norm.x)
@@ -507,26 +524,33 @@ function love.draw()
             edge[2] + love.graphics.getLineWidth()/2 * d
         })
     end
+    -- draw aim preview
     for d = 0, boltRange, 0.5 do
         drawRay(currentRay, 0.01, d + 0.25, d + 0.5)
     end
+    -- draw light bolts
     for _, bolt in ipairs(bolts) do
         drawRay(bolt.ray, 0.09, bolt.distance - boltLength, bolt.distance)
         drawRay(bolt.ray, 0.03, bolt.distance - boltLength, bolt.distance, {1, 1, 1})
     end
+    -- draw player
     love.graphics.setColor(1, 1, 1)
     love.graphics.circle("fill", position.x, position.y, radius)
     love.graphics.setColor(0, 0, 0)
     love.graphics.circle("line", position.x, position.y, radius)
+    -- draw walls
+    for i, w in ipairs(walls) do
+        love.graphics.setColor(w.color.fill)
+        love.graphics.setStencilTest("equal", i + 2)
+        love.graphics.draw(w.texture)
+    end
+    -- draw wall edges
+    love.graphics.setStencilTest()
     for _, r in pairs(regions) do
         if r.wall then
-            love.graphics.setColor(r.wall.color.fill)
-            r.mesh:setTexture(r.wall.texture)
-            love.graphics.draw(r.mesh)
-            r.mesh:setTexture(defaultTexture)
             love.graphics.setColor(r.wall.color.outline)
-            for _, edge in ipairs(r.edges) do
-                if not r.neighbors[edge] or (r.wall ~= r.neighbors[edge].wall) then
+            for edge, n in pairs(r.neighbors) do
+                if n.wall ~= r.wall then
                     local d = edge[2] - edge[1]
                     d = vec(-d.norm.y, d.norm.x)
                     love.graphics.line(vec.convertArray{
