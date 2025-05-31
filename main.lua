@@ -47,7 +47,7 @@ function love.load(args)
 
     textures = {
         glass = love.graphics.newImage("glass.png"),
-        grass = love.graphics.newImage("grass.png")
+        deathStar = love.graphics.newImage("deathstar_100.png")
     }
 
     mapSize = 12
@@ -69,9 +69,9 @@ function love.load(args)
     end
 
     -- global graphics setup
-    groundTexture = textures.grass
-    outerTint = {0.75, 0.75, 0.75}
-    borderColor = {0.3, 0.6, 0.3}
+    groundTexture = textures.deathStar
+    borderColor = {0.6, 0.6, 0.6}
+    borderWidth = 0.2
     backgroundColor = {0.6, 0.6, 1}
 
     -- wall types
@@ -277,7 +277,7 @@ function love.load(args)
     bolts = {} -- {ray, distance}
 
     regions = {}
-    borders = {}
+    border = {edges = {}, vertices = {}, vertexNormals = {}, polygon = {}}
     currentRegion = nil
 
     seed = os.time()
@@ -297,21 +297,61 @@ function love.load(args)
     end
 
     -- link neighbors
+    local bEdges = {} -- table for building world boundary
+    local pointEdges = {} -- a reference of border edges that contain a point
     for _, region in pairs(regions) do
         region.isEdge = false
         for i, edge in ipairs(region.edges) do
             region.neighbors[edge] = regions[region.neighbors[edge].str]
             if not region.neighbors[edge] then
-                table.insert(borders, edge)
-                borders[edge] = region
+                table.insert(border.edges, edge)
+                table.insert(bEdges, edge)
+
+                pointEdges[edge[1].str] = pointEdges[edge[1].str] or {}
+                table.insert(pointEdges[edge[1].str], edge)
+                pointEdges[edge[2].str] = pointEdges[edge[2].str] or {}
+                table.insert(pointEdges[edge[2].str], edge)
+
+                border.edges[edge] = region
                 region.isEdge = true
             end
         end
     end
 
+    -- order boundary vertices
+    while #bEdges > 0 do
+        for i, edge in ipairs(bEdges) do
+            if #border.vertices == 0 then
+                table.insert(border.vertices, edge[1])
+                table.insert(border.vertices, edge[2])
+                table.remove(bEdges, i)
+                break
+            elseif (edge[1] - border.vertices[#border.vertices]).len < 0.01 then
+                table.insert(border.vertices, edge[2])
+                table.remove(bEdges, i)
+                break
+            elseif (edge[2] - border.vertices[1]).len < 0.01 then
+                table.insert(border.vertices, 1, edge[1])
+                table.remove(bEdges, i)
+                break
+            end
+        end
+    end
+    
+    -- calculate vertex normals and build boundary polygon
+    for i, point in ipairs(border.vertices) do
+        local e1, e2 = unpack(pointEdges[point.str])
+        local d1, d2 = e1[2] - e1[1], e2[2] - e2[1]
+        local n1, n2 = vec(d1.y, -d1.x), vec(d2.y, -d2.x)
+        local a = n1:angle(n2)
+        local n = (n1 + n2):setLen(1/math.cos(a/2))
+        border.vertexNormals[i], border.vertexNormals[point] = n, n
+        border.polygon[i] = point + n * borderWidth/2
+    end
+
     -- generate walls
     for pos, region in pairs(regions) do
-        region.isOuter = vec.fromString(pos).sqrLen > innerMapSize^2 * 1.1
+        --region.isOuter = vec.fromString(pos).sqrLen > innerMapSize^2 * 1.1
     end
 
     -- weighted random neighbor
@@ -388,14 +428,16 @@ function traceRay(region, origin, direction, light, range, power)
             if not range or d < range  then
                 r.length = d
                 local neighbor = region.neighbors[edge]
-                if (neighbor and neighbor.wall) == region.wall then
+                if not neighbor then
+                    return r
+                elseif neighbor.wall == region.wall then
                     r = traceRay(neighbor, origin, direction, light, range, power)
                     r.region = region
                     return r
                 end
                 local n1 = region.wall and region.wall.material.density or 1
                 local n2 = neighbor and neighbor.wall and neighbor.wall.material.density or 1
-                local alpha = normal:angleTo(direction)
+                local alpha = normal:signedAngle(direction)
                 local refl = -normal:rotate(-alpha)
                 local sin_beta = n1/n2 * math.sin(alpha)
                 if math.abs(sin_beta) < 1 then
@@ -499,31 +541,20 @@ function love.draw()
     
     love.graphics.setBackgroundColor(backgroundColor)
 
-    love.graphics.setLineWidth(0.025)
-    -- set stencil values (1 for normal ground, 2 for outer layer, 2 + n for each wall type)
+    -- set stencil values (1 for ground, n + 1 for each wall type)
     for _, r in pairs(regions) do
         love.graphics.stencil(function()
             love.graphics.polygon("fill", vec.convertArray(r.vertices))
-        end, "replace", (r.wall and r.wall.index + 2) or (r.isOuter and 2) or 1, true)
+        end, "replace", (r.wall and r.wall.index or 0) + 1, true)
     end
     -- draw normal ground
     love.graphics.setColor(1, 1, 1)
     love.graphics.setStencilTest("greater", 0)
-    love.graphics.draw(groundTexture)
-    -- draw outer layer
-    love.graphics.setColor(borderColor)
-    love.graphics.setStencilTest("equal", 2)
-    love.graphics.draw(groundTexture)
+    love.graphics.draw(groundTexture, 0, 0, 0, 2, 2)
     -- draw map edges
-    love.graphics.setStencilTest()
-    for _, edge in ipairs(borders) do
-        local d = edge[2] - edge[1]
-        d = vec(-d.norm.y, d.norm.x)
-        love.graphics.line(vec.convertArray{
-            edge[1] + love.graphics.getLineWidth()/2 * d,
-            edge[2] + love.graphics.getLineWidth()/2 * d
-        })
-    end
+    love.graphics.setColor(borderColor)
+    love.graphics.setLineWidth(borderWidth)
+    love.graphics.polygon("line", vec.convertArray(border.polygon))
     -- draw aim preview
     for d = 0, boltRange, 0.5 do
         drawRay(currentRay, 0.01, d + 0.25, d + 0.5)
@@ -534,6 +565,7 @@ function love.draw()
         drawRay(bolt.ray, 0.03, bolt.distance - boltLength, bolt.distance, {1, 1, 1})
     end
     -- draw player
+    love.graphics.setLineWidth(0.025)
     love.graphics.setColor(1, 1, 1)
     love.graphics.circle("fill", position.x, position.y, radius)
     love.graphics.setColor(0, 0, 0)
@@ -541,7 +573,7 @@ function love.draw()
     -- draw walls
     for i, w in ipairs(walls) do
         love.graphics.setColor(w.color.fill)
-        love.graphics.setStencilTest("equal", i + 2)
+        love.graphics.setStencilTest("equal", i + 1)
         love.graphics.draw(w.texture)
     end
     -- draw wall edges

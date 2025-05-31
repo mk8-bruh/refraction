@@ -57,17 +57,17 @@ lib = {
 			return a.x * b.y - a.y * b.x
 		end
 	end,
-	angle = function(v)
+	atan2 = function(v)
 		if lib.is(v) then
 			return ang(atan2(v.y, v.x))
 		end
 	end,
-	angleBetween = function(a, b)
+	angle = function(a, b)
 		if lib.is(a) and lib.is(b) then
 			return asin(a.norm:dot(b.norm))
 		end
 	end,
-	angleTo = function(a, b)
+	signedAngle = function(a, b)
 		if lib.is(a) and lib.is(b) then
 			return asin(a.norm:det(b.norm))
 		end
@@ -168,7 +168,7 @@ mt = {
 	__unm = function(v) return lib.new(-v.x, -v.y) end,
 	__len = function(v) return v.len end,
 	__tostring = function(v) return fstr('(%s, %s)', tostring(v.x), tostring(v.y)) end,
-	__index = function(v, k) if k == "len" then return sqrt(v:dot(v)) elseif k == "sqrLen" then return v:dot(v) elseif k == "norm" then return v:normal() elseif k == "ang" then return v:angle() elseif k == "str" then return tostring(v) else return lib[k] end end
+	__index = function(v, k) if k == "len" then return sqrt(v:dot(v)) elseif k == "sqrLen" then return v:dot(v) elseif k == "norm" then return v:normal() elseif k == "ang" then return v:atan2() elseif k == "str" then return tostring(v) else return lib[k] end end
 }
 
 local consts = {
