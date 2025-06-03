@@ -1,11 +1,10 @@
 math.sign = function(x) return x > 0 and 1 or x < 0 and -1 or 0 end
-vec = require "vec"
+vec = require "vec2"
+vec.precision = 4
 require "gen"
 
 function love.load(args)
-    love.graphics.setDefaultFilter("linear")
-    local crosshair = love.mouse.newCursor("crosshair.png", 8, 8)
-    love.mouse.setCursor(crosshair)
+    love.mouse.setRelativeMode(true)
 
     -- light types
     light = {
@@ -32,22 +31,27 @@ function love.load(args)
         }
     }
 
-    material = {
+    material = { -- { density, refract, reflect }
+        wall = {
+            refract = false,
+            reflect = false
+        },
+        metal = {
+            refract = false,
+            reflect = true
+        },
         glass = {
             density = 2,
             refract = true,
             reflect = true
-        },
-        tintedGlass = {
-            density = 2,
-            refract = false,
-            reflect = true,
         }
     }
 
     textures = {
+        floor = love.graphics.newImage("floor.png"),
+        wall  = love.graphics.newImage("wall.png" ),
+        metal = love.graphics.newImage("metal.png"),
         glass = love.graphics.newImage("glass.png"),
-        deathStar = love.graphics.newImage("deathstar_100.png")
     }
 
     mapSize = 12
@@ -68,184 +72,248 @@ function love.load(args)
         textures[k] = mesh
     end
 
-    -- global graphics setup
-    groundTexture = textures.deathStar
-    borderColor = {0.6, 0.6, 0.6}
-    borderWidth = 0.2
-    backgroundColor = {0.6, 0.6, 1}
-
     -- wall types
-    walls = {
+    wallTypes = { -- { tint, thickness, texture, material, split[ light -> { reflect, refract } ] }
+        { -- wall
+            tint = {1, 1, 1},
+            thickness = 0.1,
+            texture = textures.wall,
+            material = material.wall
+        },
+        { -- metal
+            tint = {1, 1, 1},
+            thickness = 0.1,
+            texture = textures.metal,
+            material = material.metal
+        },
         { -- white
-            color = {
-                fill = {1, 1, 1},
-                outline = {1, 1, 1}
-            },
+            tint = {1, 1, 1},
+            thickness = 0.1,
+            texture = textures.glass,
+            material = material.glass
+        },
+        { -- red
+            tint = {1, 0, 0},
+            thickness = 0.1,
             texture = textures.glass,
             material = material.glass,
             split = {
-                --[light] => {refract, reflect}
-            }
-        },
-        { -- red
-            color = {
-                fill = {1, 0, 0},
-                outline = {1, 0, 0}
-            },
-            texture = textures.glass,
-            material = material.tintedGlass,
-            split = {
                 [light.white] = {
-                    light.red, light.cyan
+                    refract = light.red,
+                    reflect = light.cyan
                 },
-                [light.red] = {
-                    light.red, nil
+                [light.green] = {
+                    reflect = light.green
+                },
+                [light.blue] = {
+                    reflect = light.blue
                 },
                 [light.yellow] = {
-                    light.red, light.green
+                    refract = light.red,
+                    reflect = light.green
+                },
+                [light.cyan] = {
+                    reflect = light.cyan
                 },
                 [light.magenta] = {
-                    light.red, light.blue
+                    refract = light.red,
+                    reflect = light.blue
                 }
             }
         },
         { -- green
-            color = {
-                fill = {0, 1, 0},
-                outline = {0, 1, 0}
-            },
+            tint = {0, 1, 0},
+            thickness = 0.1,
             texture = textures.glass,
-            material = material.tintedGlass,
+            material = material.glass,
             split = {
                 [light.white] = {
-                    light.green, light.magenta
+                    refract = light.green,
+                    reflect = light.magenta
                 },
-                [light.green] = {
-                    light.green, nil
+                [light.red] = {
+                    reflect = light.red
+                },
+                [light.blue] = {
+                    reflect = light.blue
                 },
                 [light.yellow] = {
-                    light.green, light.red
+                    refract = light.green,
+                    reflect = light.red
                 },
                 [light.cyan] = {
-                    light.green, light.blue
+                    refract = light.green,
+                    reflect = light.blue
+                },
+                [light.magenta] = {
+                    reflect = light.magenta
                 }
             }
         },
         { -- blue
-            color = {
-                fill = {0, 0, 1},
-                outline = {0, 0, 1}
-            },
+            tint = {0, 0, 1},
+            thickness = 0.1,
             texture = textures.glass,
-            material = material.tintedGlass,
+            material = material.glass,
             split = {
                 [light.white] = {
-                    light.blue, light.yellow
+                    refract = light.blue,
+                    reflect = light.yellow
                 },
-                [light.blue] = {
-                    light.blue, nil
+                [light.red] = {
+                    reflect = light.red
+                },
+                [light.green] = {
+                    reflect = light.green
+                },
+                [light.yellow] = {
+                    reflect = light.yellow
                 },
                 [light.cyan] = {
-                    light.blue, light.green
+                    refract = light.blue,
+                    reflect = light.green
                 },
                 [light.magenta] = {
-                    light.blue, light.red
+                    refract = light.blue,
+                    reflect = light.red
                 }
             }
         },
         { -- yellow
-            color = {
-                fill = {1, 1, 0},
-                outline = {1, 1, 0}
-            },
+            tint = {1, 1, 0},
+            thickness = 0.1,
             texture = textures.glass,
-            material = material.tintedGlass,
+            material = material.glass,
             split = {
                 [light.white] = {
-                    light.yellow, light.blue
+                    refract = light.yellow,
+                    reflect = light.blue
                 },
                 [light.red] = {
-                    light.red, nil
+                    refract = light.red
                 },
                 [light.green] = {
-                    light.green, nil
+                    refract = light.green
+                },
+                [light.blue] = {
+                    reflect = light.blue
                 },
                 [light.yellow] = {
-                    light.yellow, nil
+                    refract = light.yellow
                 },
                 [light.cyan] = {
-                    light.green, light.blue
+                    refract = light.green,
+                    reflect = light.blue
                 },
                 [light.magenta] = {
-                    light.red, light.blue
+                    refract = light.red,
+                    reflect = light.blue
                 }
             }
         },
         { -- cyan
-            color = {
-                fill = {0, 1, 1},
-                outline = {0, 1, 1}
-            },
+            tint = {0, 1, 1},
+            thickness = 0.1,
             texture = textures.glass,
-            material = material.tintedGlass,
+            material = material.glass,
             split = {
                 [light.white] = {
-                    light.cyan, light.red
+                    refract = light.cyan,
+                    reflect = light.red
+                },
+                [light.red] = {
+                    reflect = light.red
                 },
                 [light.green] = {
-                    light.green, nil
+                    refract = light.green
                 },
                 [light.blue] = {
-                    light.blue, nil
+                    refract = light.blue
                 },
                 [light.yellow] = {
-                    light.green, light.red
+                    refract = light.green,
+                    reflect = light.red
                 },
                 [light.cyan] = {
-                    light.cyan, nil
+                    refract = light.cyan
                 },
                 [light.magenta] = {
-                    light.blue, light.red
+                    refract = light.blue,
+                    reflect = light.red
                 }
             }
         },
         { -- magenta
-            color = {
-                fill = {1, 0, 1},
-                outline = {1, 0, 1}
-            },
+            tint = {1, 0, 1},
+            thickness = 0.1,
             texture = textures.glass,
-            material = material.tintedGlass,
+            material = material.glass,
             split = {
                 [light.white] = {
-                    light.magenta, light.green
+                    refract = light.magenta,
+                    reflect = light.green
                 },
                 [light.red] = {
-                    light.red, nil
+                    refract = light.red
+                },
+                [light.green] = {
+                    reflect = light.green
                 },
                 [light.blue] = {
-                    light.blue, nil
+                    refract = light.blue
                 },
                 [light.yellow] = {
-                    light.red, light.green
+                    refract = light.red,
+                    reflect = light.green
                 },
                 [light.cyan] = {
-                    light.blue, light.green
+                    refract = light.blue,
+                    reflect = light.green
                 },
                 [light.magenta] = {
-                    light.magenta, nil
+                    refract = light.magenta
                 }
             }
         }
     }
-    for i, wall in ipairs(walls) do
-        wall.index = i
+    for i, wall in ipairs(wallTypes) do
+        wall.mask = i + 1
     end
 
-    position = vec.polar(love.math.random() * 2 * math.pi) * 11
+    -- global graphics setup
+    groundTexture = textures.floor
+    backgroundTexture = love.graphics.newImage("background.png")
+    backgroundScale = 0.02
+    
+    -- bolts
+    previewRange = 10
+    boltSpeed = 20
+    boltLength = 1
+    bolts = {} -- { ray, distance }
+
+    -- particles
+    particleLifetime = 1
+    particleEaseOut = 4
+    particleStartOpacity = 1
+    particleEndOpacity = 0
+    particleStartRadius = 0.02
+    particleEndRadius = 0.2
+    particles = {} -- { position, color, lifetime }
+
+    -- map
+    cells = {byPosition = {}} -- { position, anchor, vertices[ index -> point ], edges[ index -> edge, neighbor -> edge ], neighbors[ edge -> neighbor ] } [ index -> cell ] byPosition[ position -> cell ]
+    edges = {} -- { pointA, pointB, length, wall } [ pointA -> pointB -> edge]
+    boundary = {cells = {}, edges = {}} -- cells[ index -> cell, edge -> cell ], edges[ cell -> array<edge>]
+    currentCell = nil
+
+    -- player
+    position = vec.polar(love.math.random() * 2 * math.pi, 11)
     radius = 0.25
     moveSpeed = 5
-    direction = vec(0, 0)
+    pointerSens = 0.002
+    viewSize = previewRange + 2
+    viewOffset = previewRange/3
+    direction = -position:normal()
     lightToggles = {true, true, true}
     lightTypeMap = {
         [true] = {
@@ -269,192 +337,210 @@ function love.load(args)
         }
     }
     currentLight = light.white
-    currentRay = nil
-    
-    boltRange = 10
-    boltSpeed = 20
-    boltLength = 1
-    bolts = {} -- {ray, distance}
+    currentRay = nil -- cell, origin, direction, length, light, power, hit { point, normal, edge, cell }, reflect, refract
 
-    regions = {}
-    border = {edges = {}, vertices = {}, vertexNormals = {}, polygon = {}}
-    currentRegion = nil
-
+    -- map generator settings
     seed = os.time()
     love.math.setRandomSeed(seed)
+    boundaryWall = wallTypes[1]
+    minRoomCount, maxRoomCount = 6, 12
+    minRoomSize = 10
+    roomWall = wallTypes[1]
 
     -- generate polygons
     for x = -mapSize, mapSize do
         for y = -mapSize, mapSize do
             if x^2 + y^2 <= mapSize^2 * 1.1 then
-                local region = generateVoronoiCell(seed, x, y)
-                regions[vec(x, y).str] = region
-                if insidePolygon(position, region.vertices) then
-                    currentRegion = region
+                local cell = generateVoronoiCell(seed, x, y)
+                table.insert(cells, cell)
+                cells.byPosition[cell.position] = cell
+                if insidePolygon(position, cell.vertices) then
+                    currentCell = cell
+                end
+                for i, v in ipairs(cell.vertices) do
+                    edges[v] = {}
                 end
             end
         end
     end
 
     -- link neighbors
-    local bEdges = {} -- table for building world boundary
-    local pointEdges = {} -- a reference of border edges that contain a point
-    for _, region in pairs(regions) do
-        region.isEdge = false
-        for i, edge in ipairs(region.edges) do
-            region.neighbors[edge] = regions[region.neighbors[edge].str]
-            if not region.neighbors[edge] then
-                table.insert(border.edges, edge)
-                table.insert(bEdges, edge)
-
-                pointEdges[edge[1].str] = pointEdges[edge[1].str] or {}
-                table.insert(pointEdges[edge[1].str], edge)
-                pointEdges[edge[2].str] = pointEdges[edge[2].str] or {}
-                table.insert(pointEdges[edge[2].str], edge)
-
-                border.edges[edge] = region
-                region.isEdge = true
+    for _, cell in ipairs(cells) do
+        boundary.edges[cell] = {}
+        for i, edge in ipairs(cell.edges) do
+            local v1, v2 = unpack(edge)
+            if v2.x < v1.x or (v2.x == v1.x and v2.y < v1.y) then v1, v2 = v2, v1 end
+            local e = edges[v1][v2]
+            if not e then
+                e = {
+                    v1, v2, length = (v1 - v2).len
+                }
+                table.insert(edges, e)
+                edges[v1][v2], edges[v2][v1] = e, e
+            end
+            cell.edges[i] = e
+            local n = cells.byPosition[cell.neighbors[edge]]
+            cell.neighbors[edge] = nil
+            if n then
+                cell.neighbors[e] = n
+                cell.edges[n] = e
+            else
+                table.insert(boundary.cells, cell)
+                boundary.cells[e] = cell
+                table.insert(boundary.edges[cell], e)
+                e.wall = boundaryWall
             end
         end
     end
 
-    -- order boundary vertices
-    while #bEdges > 0 do
-        for i, edge in ipairs(bEdges) do
-            if #border.vertices == 0 then
-                table.insert(border.vertices, edge[1])
-                table.insert(border.vertices, edge[2])
-                table.remove(bEdges, i)
-                break
-            elseif (edge[1] - border.vertices[#border.vertices]).len < 0.01 then
-                table.insert(border.vertices, edge[2])
-                table.remove(bEdges, i)
-                break
-            elseif (edge[2] - border.vertices[1]).len < 0.01 then
-                table.insert(border.vertices, 1, edge[1])
-                table.remove(bEdges, i)
-                break
+    -- initialize rooms
+    rooms = {} -- { cells[ index -> cell ], edges[ index -> edge, room -> array<edge> ], neighbors[ index -> room, edge -> room ] }
+    local queue = {}
+    for i = 1, love.math.random(minRoomCount, maxRoomCount) do
+        local cell, isValid
+        local iterations = 0
+        repeat
+            cell = cells[love.math.random(#cells)]
+            isValid = true
+            for j, room in ipairs(rooms) do
+                if (room.cells[1].anchor - cell.anchor).len < minRoomSize/2 then
+                    isValid = false
+                    break
+                end
             end
+            iterations = iterations + 1
+        until isValid == true or iterations > 20
+        if isValid then
+            local room = {cells = {cell}, edges = {}, neighbors = {}}
+            cell.room = room
+            table.insert(rooms, room)
+            table.insert(queue, cell)
         end
     end
-    
-    -- calculate vertex normals and build boundary polygon
-    for i, point in ipairs(border.vertices) do
-        local e1, e2 = unpack(pointEdges[point.str])
-        local d1, d2 = e1[2] - e1[1], e2[2] - e2[1]
-        local n1, n2 = vec(d1.y, -d1.x), vec(d2.y, -d2.x)
-        local a = n1:angle(n2)
-        local n = (n1 + n2):setLen(1/math.cos(a/2))
-        border.vertexNormals[i], border.vertexNormals[point] = n, n
-        border.polygon[i] = point + n * borderWidth/2
-    end
 
-    -- generate walls
-    for pos, region in pairs(regions) do
-        --region.isOuter = vec.fromString(pos).sqrLen > innerMapSize^2 * 1.1
-    end
-
-    -- weighted random neighbor
-    local initialSpawnRate = 0.07
-    local earlyTerminationChance = 0.1
-    local directionNormalizationDegree = 2
-
-    local patches, direction = {}, {}
-    for _, region in pairs(regions) do
-        local rand = love.math.random()
-        if not region.isOuter and rand > 1 - initialSpawnRate then
-            region.wall = walls[love.math.random(1, #walls)]
-            table.insert(patches, region)
-            table.insert(direction, -region.anchor.norm)
-        end
-    end
-    while #patches > 0 do
-        for i = #patches, 1, -1 do
-            if love.math.random() > earlyTerminationChance then
-                local region = patches[i]
-                local deltaAngle = (love.math.random() * 2 - 1) ^ (2 * directionNormalizationDegree + 1) * math.pi
-                direction[i] = direction[i]:rotate(deltaAngle)
-                for _, edge in ipairs(region.edges) do
-                    local p = intersect("vector ray", region.anchor, direction[i], "segment", edge[1], edge[2])
-                    if p then
-                        local neighbor = region.neighbors[edge]
-                        local valid = neighbor ~= nil and not neighbor.isOuter and not neighbor.wall
-                        if valid then
-                            neighbor.wall = region.wall
-                            patches[i] = neighbor
-                        else
-                            table.remove(patches, i)
-                            table.remove(direction, i)
-                        end
-                        break
+    -- flood fill
+    while #queue > 0 do
+        for i = #queue, 1, -1 do
+            local cell = table.remove(queue, i)
+            cell.queued = nil
+            if not cell.room then
+                local room, weight = nil, 0
+                for r, w in pairs(cell.roomWeights) do
+                    if w > weight then
+                        room, weight = r, w
                     end
                 end
-            else
-                table.remove(patches, i)
-                table.remove(direction, i)
+                cell.room = room
+                table.insert(room.cells, cell)
+            end
+            local room = cell.room
+            for edge, neighbor in pairs(cell.neighbors) do
+                local other = neighbor.room
+                if not other then
+                    if not neighbor.queued then
+                        neighbor.queued = true
+                        neighbor.roomWeights = {}
+                        table.insert(queue, neighbor)
+                    end
+                    neighbor.roomWeights[room] = (neighbor.roomWeights[room] or 0) + edge.length
+                elseif other ~= room then
+                    if not room.edges[other] then
+                        room.edges[other] = {}
+                        table.insert(room.neighbors, other)
+                    end
+                    if not other.edges[room] then
+                        other.edges[room] = {}
+                        table.insert(other.neighbors, room)
+                    end
+                    if not room.neighbors[edge] then
+                        table.insert(room.edges, edge)
+                        table.insert(room.edges[other], edge)
+                        room.neighbors[edge] = other
+                    end
+                    if not other.neighbors[edge] then
+                        table.insert(other.edges, edge)
+                        table.insert(other.edges[room], edge)
+                        other.neighbors[edge] = room
+                    end
+                    edge.wall = roomWall
+                end
+            end
+        end
+    end
+
+    -- create doors
+    for i, room in ipairs(rooms) do
+        for j, other in ipairs(room.neighbors) do
+            local door = nil
+            for k, edge in ipairs(room.edges[other]) do
+                if not door or edge.length > door.length then
+                    door = edge
+                end
+            end
+            if door then
+                door.wall = nil
             end
         end
     end
 end
 
-function traceRay(region, origin, direction, light, range, power)
-    direction = direction.norm
+function traceRay(cell, origin, direction, range, light, power)
+    if not (cell and origin and direction and range) then return end
+    direction = direction:normal()
     power = power or 1
     local r = {
-        region = region,
+        cell = cell,
         origin = origin,
         direction = direction,
         length = range,
         light = light,
-        split = {},
         power = power,
+        hit = nil,
     }
-    if light and region and region.wall then
-        if region.wall.split[light] then
-            light = region.wall.split[light][1]
-        elseif not region.wall.material.refract then
-            light = nil
-        end
-    end
-    if not region then
-        return r
-    end
-    for _, edge in ipairs(region.edges) do
-        local p = intersect("vector ray", origin, direction, "segment", edge[1], edge[2])
-        local normal = (edge[2] - edge[1]).norm
-        normal = vec(normal.y, -normal.x)
-        if p and direction:dot(normal) > 0 then
+    for _, edge in ipairs(cell.edges) do
+        local v1, v2 = unpack(edge)
+        if (v1 - cell.anchor):det(v2 - cell.anchor) < 0 then v1, v2 = v2, v1 end
+        local normal = (v2 - v1):normal()
+        normal = vec(-normal.y, normal.x)
+        local p = intersect("vector ray", origin, direction, "segment", v1, v2)
+        if p and direction:dot(normal) < 0 then
             local d = (p - origin).len
             if not range or d < range  then
                 r.length = d
-                local neighbor = region.neighbors[edge]
-                if not neighbor then
-                    return r
-                elseif neighbor.wall == region.wall then
-                    r = traceRay(neighbor, origin, direction, light, range, power)
-                    r.region = region
+                local neighbor = cell.neighbors[edge]
+                if not edge.wall and not neighbor.wall then
+                    r = traceRay(neighbor, origin, direction, range, light, power) or r
+                    r.cell = cell
                     return r
                 end
-                local n1 = region.wall and region.wall.material.density or 1
-                local n2 = neighbor and neighbor.wall and neighbor.wall.material.density or 1
-                local alpha = normal:signedAngle(direction)
-                local refl = -normal:rotate(-alpha)
-                local sin_beta = n1/n2 * math.sin(alpha)
+                r.hit = {
+                    point = p,
+                    normal = normal,
+                    edge = edge,
+                    cell = neighbor
+                }
+                local wall = cell.wall ~= edge.wall and edge.wall or neighbor and neighbor.wall
+                local n1 = cell.wall and cell.wall.material.density or 1
+                local n2 = wall and wall.material.density or 1
+                local alpha = (-normal):signedAngle(direction)
+                local refl  = normal:rotate(-alpha)
+                local sin_beta = math.sin(alpha) * n1/n2
                 if math.abs(sin_beta) < 1 then
-                    local refr = normal:rotate(math.asin(sin_beta))
-                    if neighbor and neighbor.wall and neighbor.wall.split[light] then
-                        local refr_type, refl_type = unpack(neighbor.wall.split[light])
-                        r.split = {
-                            traceRay(neighbor, p, refr, refr_type, (range and (range - d)) or nil, power/2),
-                            traceRay(region,   p, refl, refl_type, (range and (range - d)) or nil, power/2)
-                        }
-                    elseif not neighbor or not neighbor.wall or neighbor.wall.material.refract then
-                        r.split = {traceRay(neighbor, p, refr, light, (range and (range - d)) or nil, power)}
-                    elseif neighbor and neighbor.wall and neighbor.wall.material.reflect then
-                        r.split = {traceRay(region, p, refl, light, (range and (range - d)) or nil, power)}
+                    local refr = (-normal):rotate(math.asin(sin_beta))
+                    if light and wall.split and wall.split[light] then
+                        if wall.split[light].refract and neighbor then
+                            r.refract = traceRay(neighbor, p, refr, range - d, wall.split[light].refract, power/2)
+                        end
+                        if wall.split[light].reflect then
+                            r.reflect = traceRay(cell,     p, refl, range - d, wall.split[light].reflect, power/2)
+                        end
+                    elseif wall.material.refract and neighbor then
+                        r.refract = traceRay(neighbor, p, refr, range - d, light, power)
+                    elseif wall.material.reflect then
+                        r.reflect = traceRay(cell,     p, refl, range - d, light, power)
                     end
                 else
-                    r.split = {traceRay(region, p, refl, light, (range and (range - d)) or nil, power)}
+                    r.reflect = traceRay(cell, p, refl, range - d, light, power)
                 end
                 return r
             end
@@ -463,21 +549,25 @@ function traceRay(region, origin, direction, light, range, power)
     return r
 end
 
-local infiniteRayLength = 100
-function drawRay(ray, width, from, to, overrideColor)
-    from, to = from or 0, to or infiniteRayLength
-    for _, r in ipairs(ray.split) do
-        local l = ray.length or (r.origin - ray.origin).len
-        if to > l then
-            drawRay(r, width, from - l, to - l, overrideColor)
+local maxRayLength = 30
+function drawRay(ray, width, from, to, opacity, overrideColor)
+    opacity = opacity or 1
+    from, to = from or 0, to or maxRayLength
+    local len = math.min(ray.length, maxRayLength)
+    if to > len then
+        if ray.reflect then
+            drawRay(ray.reflect, width, from - len, to - len, opacity, overrideColor)
+        end
+        if ray.refract then
+            drawRay(ray.refract, width, from - len, to - len, opacity, overrideColor)
         end
     end
-    local len = ray.length or infiniteRayLength
-    if from < len and to > 0 and ray.light then
+    if from < len and to > 0 and (overrideColor or ray.light) then
         from, to = math.max(math.min(from, len), 0), math.max(math.min(to, len), 0)
         local p1, p2 = ray.origin + ray.direction:setLen(from), ray.origin + ray.direction:setLen(to)
         love.graphics.push("all")
-        love.graphics.setColor(overrideColor or ray.light.color)
+        local r, g, b = unpack(overrideColor or ray.light.color)
+        love.graphics.setColor(r, g, b, opacity)
         love.graphics.circle("fill", p1.x, p1.y, width/2)
         love.graphics.circle("fill", p2.x, p2.y, width/2)
         love.graphics.setLineWidth(width)
@@ -492,38 +582,85 @@ function love.update(dt)
     local move_inp = vec(
         (love.keyboard.isDown("d") and 1 or 0) - (love.keyboard.isDown("a") and 1 or 0),
         (love.keyboard.isDown("s") and 1 or 0) - (love.keyboard.isDown("w") and 1 or 0)
-    )
-    local delta = move_inp:setLen(moveSpeed * dt)
-    for _, edge in ipairs(currentRegion.edges) do
-        local neighbor = currentRegion.neighbors[edge]
-        if (not neighbor or neighbor.wall ~= currentRegion.wall) and intersectCircle("line", edge[1], edge[2], position + delta, radius) then
-            local e = (edge[2] - edge[1]).norm
-            local normal = vec(e.y, -e.x)
-            delta = delta:project(e) + (math.abs((position - edge[1]):det(e)) - radius) * normal
+    ):rotate(direction.atan2 + math.pi/2)
+    position = position + move_inp:setLen(moveSpeed * dt)
+    for _, edge in ipairs(currentCell.edges) do
+        if edge.wall then
+            local v1, v2 = unpack(edge)
+            if (v1 - currentCell.anchor):det(v2 - currentCell.anchor) < 0 then v1, v2 = v2, v1 end
+            local e = (v2 - v1):normal()
+            local normal = vec(-e.y, e.x)
+            if intersectCircle("segment", v1, v2, position, radius + edge.wall.thickness/2) then
+                local d = nearestPoint(position, "segment", v1, v2)
+                position = d + (position - d):setLen(radius + edge.wall.thickness/2)
+            end
+        elseif currentCell.neighbors[edge] then
+            local neighbor = currentCell.neighbors[edge]
+            for _, edge in ipairs(neighbor.edges) do
+                if edge.wall then
+                    local v1, v2 = unpack(edge)
+                    if (v1 - neighbor.anchor):det(v2 - neighbor.anchor) < 0 then v1, v2 = v2, v1 end
+                    local e = (v2 - v1):normal()
+                    local normal = vec(-e.y, e.x)
+                    if intersectCircle("segment", v1, v2, position, radius + edge.wall.thickness/2) then
+                        local d = nearestPoint(position, "segment", v1, v2)
+                        position = d + (position - d):setLen(radius + edge.wall.thickness/2)
+                    end
+                end
+            end
         end
     end
-    position = position + delta
-    if not insidePolygon(position, currentRegion.vertices) then
-        for _, neighbor in pairs(currentRegion.neighbors) do
+    if not insidePolygon(position, currentCell.vertices) then
+        for _, neighbor in pairs(currentCell.neighbors) do
             if insidePolygon(position, neighbor.vertices) then
-                currentRegion = neighbor
+                currentCell = neighbor
                 break
             end
         end
     end
-    direction = (vec(love.mouse.getPosition()) - vec(w/2, h/2)).norm
 
-    currentRay = traceRay(currentRegion, position, direction, currentLight, boltRange)
+    -- preview bolt trajectory
+    currentRay = traceRay(currentCell, position, direction, previewRange, currentLight)
 
+    -- update bolts
     local inc = boltSpeed * dt
     for i = #bolts, 1, -1 do
         local bolt = bolts[i]
         bolt.distance = bolt.distance + inc
+        if bolt.ray.hit and not bolt.impacted and bolt.distance > bolt.ray.length then
+            local c = (bolt.ray.reflect and bolt.ray.reflect.light and bolt.ray.reflect.light.color) or (not bolt.ray.refract and bolt.ray.light and bolt.ray.light.color)
+            if c then
+                table.insert(particles, {
+                    position = bolt.ray.hit.point,
+                    color = c,
+                    lifetime = 0
+                })
+            end
+            bolt.impacted = true
+        end
         if bolt.distance > bolt.ray.length + boltLength then
             table.remove(bolts, i)
-            for _, r in ipairs(bolt.ray.split) do
-                table.insert(bolts, {distance = bolt.distance - bolt.ray.length, ray = traceRay(r.region, r.origin, r.direction, r.light, boltRange, r.power)})
+            if bolt.ray.refract then
+                table.insert(bolts, {
+                    distance = bolt.distance - bolt.ray.length,
+                    ray = traceRay(bolt.ray.refract.cell, bolt.ray.refract.origin, bolt.ray.refract.direction, previewRange, bolt.ray.refract.light, bolt.ray.refract.power)
+                })
             end
+            if bolt.ray.reflect then
+                table.insert(bolts, {
+                    distance = bolt.distance - bolt.ray.length,
+                    ray = traceRay(bolt.ray.reflect.cell, bolt.ray.reflect.origin, bolt.ray.reflect.direction, previewRange, bolt.ray.reflect.light, bolt.ray.reflect.power)
+                })
+            end
+        end
+    end
+
+    -- update particles
+    for i = #particles, 1, -1 do
+        local particle = particles[i]
+        particle.lifetime = particle.lifetime + dt
+        if particle.lifetime > particleLifetime then
+            table.remove(particles, i)
         end
     end
 end
@@ -537,32 +674,35 @@ end
 
 function love.draw()
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-    applyCameraTransform(position.x, position.y, w/2 / (boltRange + 1), 0)
+    love.graphics.push("all")
+    applyCameraTransform(position.x + direction.x * viewOffset, position.y + direction.y * viewOffset, h / viewSize, direction.atan2 + math.pi/2)
     
-    love.graphics.setBackgroundColor(backgroundColor)
-
-    -- set stencil values (1 for ground, n + 1 for each wall type)
-    for _, r in pairs(regions) do
-        love.graphics.stencil(function()
-            love.graphics.polygon("fill", vec.convertArray(r.vertices))
-        end, "replace", (r.wall and r.wall.index or 0) + 1, true)
-    end
-    -- draw normal ground
     love.graphics.setColor(1, 1, 1)
-    love.graphics.setStencilTest("greater", 0)
+    love.graphics.draw(backgroundTexture, 0, 0, 0, backgroundScale, backgroundScale, backgroundTexture:getWidth()/2, backgroundTexture:getHeight()/2)
+
+    -- draw ground
+    love.graphics.stencil(function()
+        for _, cell in ipairs(cells) do
+            love.graphics.polygon("fill", vec.flattenArray(cell.vertices))
+        end
+    end)
+    love.graphics.setStencilTest("equal", 1)
+    love.graphics.setColor(0.6, 0.6, 0.6)
     love.graphics.draw(groundTexture, 0, 0, 0, 2, 2)
-    -- draw map edges
-    love.graphics.setColor(borderColor)
-    love.graphics.setLineWidth(borderWidth)
-    love.graphics.polygon("line", vec.convertArray(border.polygon))
+    -- draw particles
+    for _, particle in ipairs(particles) do
+        local t = 1 - (-(particle.lifetime/particleLifetime - 1)) ^ particleEaseOut
+        love.graphics.setColor(particle.color[1], particle.color[2], particle.color[3], particleStartOpacity + (particleEndOpacity - particleStartOpacity) * t)
+        love.graphics.circle("fill", particle.position.x, particle.position.y, particleStartRadius + (particleEndRadius - particleStartRadius) * t)
+    end
     -- draw aim preview
-    for d = 0, boltRange, 0.5 do
+    for d = 0, previewRange, 0.5 do
         drawRay(currentRay, 0.01, d + 0.25, d + 0.5)
     end
     -- draw light bolts
     for _, bolt in ipairs(bolts) do
-        drawRay(bolt.ray, 0.09, bolt.distance - boltLength, bolt.distance)
-        drawRay(bolt.ray, 0.03, bolt.distance - boltLength, bolt.distance, {1, 1, 1})
+        drawRay(bolt.ray, 0.09, bolt.distance - boltLength, bolt.distance, 1)
+        drawRay(bolt.ray, 0.03, bolt.distance - boltLength, bolt.distance, 1, {1, 1, 1})
     end
     -- draw player
     love.graphics.setLineWidth(0.025)
@@ -571,37 +711,61 @@ function love.draw()
     love.graphics.setColor(0, 0, 0)
     love.graphics.circle("line", position.x, position.y, radius)
     -- draw walls
-    for i, w in ipairs(walls) do
-        love.graphics.setColor(w.color.fill)
-        love.graphics.setStencilTest("equal", i + 1)
+    for _, cell in pairs(cells) do
+        if cell.wall then
+            love.graphics.stencil(function()
+                love.graphics.polygon(vec.flattenArray(cell.vertices))
+            end, "replace", cell.wall.mask, true)
+        end
+    end
+    for _, edge in ipairs(edges) do
+        if edge.wall then
+            love.graphics.stencil(function()
+                love.graphics.setLineWidth(edge.wall.thickness)
+                love.graphics.line(vec.flattenArray(edge))
+                love.graphics.circle("fill", edge[1].x, edge[1].y, edge.wall.thickness/2)
+                love.graphics.circle("fill", edge[2].x, edge[2].y, edge.wall.thickness/2)
+            end, "replace", edge.wall.mask, true)
+        end
+    end
+    for i, w in ipairs(wallTypes) do
+        love.graphics.setStencilTest("equal", w.mask)
+        love.graphics.setColor(w.tint)
         love.graphics.draw(w.texture)
     end
-    -- draw wall edges
-    love.graphics.setStencilTest()
-    for _, r in pairs(regions) do
-        if r.wall then
-            love.graphics.setColor(r.wall.color.outline)
-            for edge, n in pairs(r.neighbors) do
-                if n.wall ~= r.wall then
-                    local d = edge[2] - edge[1]
-                    d = vec(-d.norm.y, d.norm.x)
-                    love.graphics.line(vec.convertArray{
-                        edge[1] + love.graphics.getLineWidth()/2 * d,
-                        edge[2] + love.graphics.getLineWidth()/2 * d
-                    })
+
+    love.graphics.setLineWidth(0.02)
+    if currentCell and currentCell.room then
+        local colors = {
+            {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1, 1, 0}, {1, 0, 1}, {0, 1, 1}
+        }
+        love.graphics.setStencilTest()
+        for i, other in ipairs(currentCell.room.neighbors) do
+            love.graphics.setColor(colors[(i - 1) % #colors + 1])
+            for j, edge in ipairs(currentCell.room.edges[other]) do
+                if edge.wall then
+                    love.graphics.line(vec.flattenArray(edge))
+                else
+                    local o, d = edge[1], edge[2] - edge[1]
+                    for i = 0, 10 do
+                        local p = o + i/10 * d
+                        love.graphics.circle("fill", p.x, p.y, 0.01)
+                    end
                 end
             end
         end
     end
     
-    love.graphics.origin()
+    love.graphics.pop()
     love.graphics.setColor(1, 1, 1)
-    love.graphics.print(("%d FPS\n%s"):format(love.timer.getFPS(), currentRegion.position.str))
+    love.graphics.print(("%d FPS\n%s"):format(love.timer.getFPS(), tostring(currentCell.position)))
 end
 
 function love.keypressed(key)
     if key == "escape" then
         love.event.quit()
+    elseif key == "return" then
+        love.load()
     elseif key == "z" then
         lightToggles[1] = not lightToggles[1]
         currentLight = lightTypeMap[lightToggles[1]][lightToggles[2]][lightToggles[3]]
@@ -616,6 +780,10 @@ end
 
 function love.mousepressed(x, y, b)
     if b == 1 then
-        table.insert(bolts, {ray = currentRay, distance = 0})
+        table.insert(bolts, {ray = traceRay(currentCell, position, direction, previewRange, currentLight), distance = 0})
     end
+end
+
+function love.mousemoved(x, y, dx, dy)
+    direction = direction:rotate(dx * pointerSens)
 end

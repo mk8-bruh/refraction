@@ -1,4 +1,4 @@
-local vec = require "vec"
+local vec = require "vec2"
 
 function circumcenter(a, b, c)
     return vec(
@@ -128,38 +128,38 @@ local offsetRange = 0.5
 
 function generateVoronoiCell(seed, x, y)
     x, y = math.floor(x), math.floor(y)
-    local r = {
+    local cell = {
         position = vec(x, y),
         anchor = nil,
         vertices = {},
         edges = {},
         neighbors = {}
     }
-    r.anchor = vec(x, y) + ((1 - offsetRange)/2 * vec.one) + (offsetRange * hashNoise2D(seed, x, y))
-    local p, cp = {}, {}
+    cell.anchor = vec(x, y) + ((1 - offsetRange)/2 * vec.one) + (offsetRange * hashNoise2D(seed, x, y))
+    local points, cellPositions = {}, {}
     for x = x - genRadius, x + genRadius do
         for y = y - genRadius, y + genRadius do
-            table.insert(p, vec(x, y) + ((1 - offsetRange)/2 * vec.one) + (offsetRange * hashNoise2D(seed, x, y)))
-            table.insert(cp, vec(x, y))
+            table.insert(points, vec(x, y) + ((1 - offsetRange)/2 * vec.one) + (offsetRange * hashNoise2D(seed, x, y)))
+            table.insert(cellPositions, vec(x, y))
         end
     end
-    local d = delaunay(p)
-    filter(d, function(t) return t.points[2*genRadius^2 + 2*genRadius + 1] end)
-    local cc = {}
+    local triangulation = delaunay(points)
+    filter(triangulation, function(triangle) return triangle.points[2*genRadius^2 + 2*genRadius + 1] end)
+    local center = {}
     local angle = {}
-    for _, t in ipairs(d) do
-        cc[t] = circumcenter(p[t[1]], p[t[2]], p[t[3]])
-        angle[t] = (cc[t] - r.anchor).ang
+    for _, t in ipairs(triangulation) do
+        center[t] = circumcenter(points[t[1]], points[t[2]], points[t[3]])
+        angle[t] = (center[t] - cell.anchor).atan2
     end
-    table.sort(d, function(a, b) return angle[a] < angle[b] end)
-    for i, t in ipairs(d) do
-        table.insert(r.vertices, cc[t])
-        local edge = {cc[t], cc[d[i % #d + 1]]}
-        table.insert(r.edges, edge)
-        table.remove(t, t.points[2*genRadius^2 + 2*genRadius + 1])
-        r.neighbors[edge] = cp[d[i % #d + 1].points[t[1]] and t[1] or t[2]]
+    table.sort(triangulation, function(a, b) return angle[a] < angle[b] end)
+    for i, triangle in ipairs(triangulation) do
+        table.insert(cell.vertices, center[triangle])
+        local edge = {center[triangle], center[triangulation[i % #triangulation + 1]]}
+        table.insert(cell.edges, edge)
+        table.remove(triangle, triangle.points[2*genRadius^2 + 2*genRadius + 1])
+        cell.neighbors[edge] = cellPositions[triangulation[i % #triangulation + 1].points[triangle[1]] and triangle[1] or triangle[2]]
     end
-    return r
+    return cell
 end
 
 function nearestPoint(x, type, o, p)
@@ -189,7 +189,7 @@ end
 function intersectCircle(type, o, p, c, r)
     local v = type:match("vector") and p or (p - o)
     local d = c - o
-    local f = math.abs(v.norm:det(d))
+    local f = math.abs(v:normal():det(d))
     if f > r then return end
     local t = v:dot(d) / v.sqrLen - math.sqrt(r^2 - f^2) / v.len
     if (type:match("segment") and (t < 0 or t > 1)) or (type:match("ray") and t < 0) then return end
