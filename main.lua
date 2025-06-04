@@ -53,13 +53,7 @@ function love.load(args)
         metal = love.graphics.newImage("metal.png"),
         glass = love.graphics.newImage("glass.png"),
     }
-
-    mapSize = 12
-    outerThickness = 2
-    innerMapSize = mapSize - outerThickness
-
-    -- transform into tiled meshes
-    meshSize = 2 * mapSize + 10
+    meshSize = 30
     for k, t in pairs(textures) do
         t:setWrap("repeat")
         local mesh = love.graphics.newMesh({
@@ -71,6 +65,11 @@ function love.load(args)
         mesh:setTexture(t)
         textures[k] = mesh
     end
+
+    -- game properties
+    mapSize = 12
+    outerThickness = 2
+    innerMapSize = mapSize - outerThickness
 
     -- wall types
     wallTypes = { -- { tint, thickness, texture, material, split[ light -> { reflect, refract } ] }
@@ -300,14 +299,9 @@ function love.load(args)
     particleEndRadius = 0.2
     particles = {} -- { position, color, lifetime }
 
-    -- map
-    cells = {byPosition = {}} -- { position, anchor, vertices[ index -> point ], edges[ index -> edge, neighbor -> edge ], neighbors[ edge -> neighbor ] } [ index -> cell ] byPosition[ position -> cell ]
-    edges = {} -- { pointA, pointB, length, wall } [ pointA -> pointB -> edge]
-    boundary = {cells = {}, edges = {}} -- cells[ index -> cell, edge -> cell ], edges[ cell -> array<edge>]
-    currentCell = nil
-
     -- player
     position = vec.polar(love.math.random() * 2 * math.pi, 11)
+    currentCell = nil
     radius = 0.25
     moveSpeed = 5
     pointerSens = 0.002
@@ -346,6 +340,12 @@ function love.load(args)
     minRoomCount, maxRoomCount = 6, 12
     minRoomSize = 10
     roomWall = wallTypes[1]
+
+    -- map
+    cells = {byPosition = {}} -- { position, anchor, vertices[ index -> point ], edges[ index -> edge, neighbor -> edge ], neighbors[ edge -> neighbor ] } [ index -> cell ] byPosition[ position -> cell ]
+    edges = {} -- { pointA, pointB, length, wall } [ pointA -> pointB -> edge]
+    boundary = {cells = {}, edges = {}} -- cells[ index -> cell, edge -> cell ], edges[ cell -> array<edge>]
+    rooms = {} -- { cells[ index -> cell ], edges[ index -> edge, room -> array<edge> ], neighbors[ index -> room, edge -> room ] }
 
     -- generate polygons
     for x = -mapSize, mapSize do
@@ -394,7 +394,6 @@ function love.load(args)
     end
 
     -- initialize rooms
-    rooms = {} -- { cells[ index -> cell ], edges[ index -> edge, room -> array<edge> ], neighbors[ index -> room, edge -> room ] }
     local queue = {}
     for i = 1, love.math.random(minRoomCount, maxRoomCount) do
         local cell, isValid
@@ -579,37 +578,84 @@ end
 function love.update(dt)
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
 
+    -- player movement
     local move_inp = vec(
         (love.keyboard.isDown("d") and 1 or 0) - (love.keyboard.isDown("a") and 1 or 0),
         (love.keyboard.isDown("s") and 1 or 0) - (love.keyboard.isDown("w") and 1 or 0)
     ):rotate(direction.atan2 + math.pi/2)
-    position = position + move_inp:setLen(moveSpeed * dt)
+    local delta = move_inp:setLen(moveSpeed * dt)
+    -- player collision
+    --[[
     for _, edge in ipairs(currentCell.edges) do
         if edge.wall then
             local v1, v2 = unpack(edge)
             if (v1 - currentCell.anchor):det(v2 - currentCell.anchor) < 0 then v1, v2 = v2, v1 end
             local e = (v2 - v1):normal()
             local normal = vec(-e.y, e.x)
-            if intersectCircle("segment", v1, v2, position, radius + edge.wall.thickness/2) then
-                local d = nearestPoint(position, "segment", v1, v2)
-                position = d + (position - d):setLen(radius + edge.wall.thickness/2)
+            if normal:dot(delta) < 0 then
+                local t = radius + edge.wall.thickness/2
+                local p = intersect("vector segment", position, delta, "segment", v1 + normal * t, v2 + normal * t)
+                if p then
+                    delta = delta:project(e) + (p - position):project(normal) * 0.99
+                end
             end
-        elseif currentCell.neighbors[edge] then
-            local neighbor = currentCell.neighbors[edge]
-            for _, edge in ipairs(neighbor.edges) do
-                if edge.wall then
-                    local v1, v2 = unpack(edge)
-                    if (v1 - neighbor.anchor):det(v2 - neighbor.anchor) < 0 then v1, v2 = v2, v1 end
-                    local e = (v2 - v1):normal()
-                    local normal = vec(-e.y, e.x)
-                    if intersectCircle("segment", v1, v2, position, radius + edge.wall.thickness/2) then
-                        local d = nearestPoint(position, "segment", v1, v2)
-                        position = d + (position - d):setLen(radius + edge.wall.thickness/2)
+        end
+    end
+    for _, point in ipairs(currentCell.vertices) do
+        local r = 0
+        for _, edge in pairs(edges[point]) do
+            if edge.wall and edge.wall.thickness/2 > r then
+                r = edge.wall.thickness/2
+            end
+        end
+        if r > 0 then
+            local p = intersectCircle("vector segment", position, delta, point, r + radius)
+            if p then
+                local normal = (p - point):normal()
+                local tangent = vec(-normal.y, normal.x)
+                delta = delta:project(tangent) + (p - position):project(normal)
+            end
+        end
+    end
+    position = position + delta
+    ]]--
+    local newPosition = position + delta
+    for _, edge in ipairs(currentCell.edges) do
+        if edge.wall then
+            local v1, v2 = unpack(edge)
+            if (v1 - currentCell.anchor):det(v2 - currentCell.anchor) < 0 then v1, v2 = v2, v1 end
+            local e = (v2 - v1):normal()
+            local normal = vec(-e.y, e.x)
+            if normal:dot(position - v1) > 0 then
+                local t = radius + edge.wall.thickness/2
+                local p = nearestPoint(position, "segment", v1, v2)
+                local d = newPosition - p
+                if d.len < t then
+                    newPosition = p + d:setLen(t)
+                end
+            end
+        end
+    end
+    for _, neighbor in pairs(currentCell.neighbors) do
+        for _, edge in ipairs(neighbor.edges) do
+            if edge.wall then
+                local v1, v2 = unpack(edge)
+                if (v1 - currentCell.anchor):det(v2 - currentCell.anchor) < 0 then v1, v2 = v2, v1 end
+                local e = (v2 - v1):normal()
+                local normal = vec(-e.y, e.x)
+                if normal:dot(position - v1) > 0 then
+                    local t = radius + edge.wall.thickness/2
+                    local p = nearestPoint(position, "segment", v1, v2)
+                    local d = newPosition - p
+                    if d.len < t then
+                        newPosition = p + d:setLen(t)
                     end
                 end
             end
         end
     end
+    position = newPosition
+    -- update player region
     if not insidePolygon(position, currentCell.vertices) then
         for _, neighbor in pairs(currentCell.neighbors) do
             if insidePolygon(position, neighbor.vertices) then
@@ -734,12 +780,14 @@ function love.draw()
         love.graphics.draw(w.texture)
     end
 
+
+    -- room borders
+    love.graphics.setStencilTest()
     love.graphics.setLineWidth(0.02)
     if currentCell and currentCell.room then
         local colors = {
             {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1, 1, 0}, {1, 0, 1}, {0, 1, 1}
         }
-        love.graphics.setStencilTest()
         for i, other in ipairs(currentCell.room.neighbors) do
             love.graphics.setColor(colors[(i - 1) % #colors + 1])
             for j, edge in ipairs(currentCell.room.edges[other]) do
@@ -756,9 +804,10 @@ function love.draw()
         end
     end
     
+    -- UI
     love.graphics.pop()
     love.graphics.setColor(1, 1, 1)
-    love.graphics.print(("%d FPS\n%s"):format(love.timer.getFPS(), tostring(currentCell.position)))
+    love.graphics.print(("%d FPS\n%s - %s"):format(love.timer.getFPS(), tostring(position), tostring(currentCell.position)))
 end
 
 function love.keypressed(key)

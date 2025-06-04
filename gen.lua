@@ -164,6 +164,7 @@ end
 
 function nearestPoint(x, type, o, p)
     local v = type:match("vector") and p or (p - o)
+    if v == vec.zero then return o end
     local d = x - o
     local t = v:dot(d) / v.sqrLen
     if type:match("segment") then
@@ -188,6 +189,7 @@ end
 
 function intersectCircle(type, o, p, c, r)
     local v = type:match("vector") and p or (p - o)
+    if v == vec.zero then return end
     local d = c - o
     local f = math.abs(v:normal():det(d))
     if f > r then return end

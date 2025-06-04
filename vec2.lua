@@ -25,7 +25,7 @@ local function coordStr(x, y)
 end
 
 local function new(x, y)
-    if not isn(x) and isn(y) then
+    if not isn(x) and isn(y) or tostring(x):match("nan") or tostring(y):match("nan") then
         error(fstr("Both vector components must be numbers (got: %s, %s)", str(x), str(y)), 3)
     end
     if vec.precision then
